@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  nas-service:
+    build: .
+    container_name: nas-service
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ./backend/src/plugins:/app/backend/src/plugins
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+      - DB_PATH=/app/data/nas.db
+      - PLUGIN_DIR=/app/backend/src/plugins
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 可选: Redis 缓存
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: nas-redis
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis_data:/data
+
+  # 可选: Nginx 反向代理
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: nas-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf
+  #     - ./ssl:/etc/ssl/certs
+  #   depends_on:
+  #     - nas-service
+  #   restart: unless-stopped
+
+volumes:
+  # redis_data:
+  nas_data:
