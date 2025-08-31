@@ -1,7 +1,6 @@
 import bcrypt from 'bcrypt'
 import { SQLiteAdapter } from './Database';
 import { User } from '@/types';
-import bcrypt from 'bcrypt';
 
 const SALT_ROUNDS = 10
 
