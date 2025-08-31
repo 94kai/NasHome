@@ -67,14 +67,25 @@
           <div class="editor-container">
             <!-- Markdown 编辑器 -->
             <div v-if="!showPreview" class="editor-wrapper">
-              <bytemd
+                          <div class="custom-editor">
+              <textarea
                 v-model="noteForm.content"
-                :plugins="editorPlugins"
-                :upload-images="handleImageUpload"
-                :sanitize="sanitize"
+                class="markdown-textarea"
                 placeholder="输入笔记内容，支持 Markdown 语法..."
-                @change="handleContentChange"
-              />
+                @input="handleTextareaInput"
+                rows="20"
+              ></textarea>
+              <div class="editor-toolbar">
+                <button type="button" @click="insertMarkdown('**', '**')" title="粗体">B</button>
+                <button type="button" @click="insertMarkdown('*', '*')" title="斜体">I</button>
+                <button type="button" @click="insertMarkdown('~~', '~~')" title="删除线">S</button>
+                <button type="button" @click="insertMarkdown('# ', '')" title="标题1">H1</button>
+                <button type="button" @click="insertMarkdown('## ', '')" title="标题2">H2</button>
+                <button type="button" @click="insertMarkdown('- ', '')" title="列表">•</button>
+                <button type="button" @click="insertMarkdown('```\n', '\n```')" title="代码块">代码</button>
+                <button type="button" @click="insertMarkdown('[', '](url)')" title="链接">链接</button>
+              </div>
+            </div>
             </div>
 
             <!-- 预览模式 -->
@@ -129,7 +140,23 @@ const router = useRouter()
 const userStore = useUserStore()
 
 // Markdown 编辑器配置
-const editorPlugins = [gfm(), highlight(), breaks()]
+const editorPlugins = [
+  gfm({
+    // 简化GFM插件配置
+  }), 
+  highlight({
+    // 简化代码高亮配置
+  }), 
+  breaks()
+]
+
+// 编辑器配置
+const editorConfig = {
+  placeholder: '输入笔记内容，支持 Markdown 语法...',
+  spellcheck: false,
+  lineNumbers: false,
+  wordWrap: 'on'
+}
 
 // HTML 清理配置
 const sanitizeOptions = {
@@ -297,6 +324,34 @@ const togglePreview = () => {
 // 处理内容变化
 const handleContentChange = (value: string) => {
   noteForm.value.content = value
+}
+
+// 处理textarea输入
+const handleTextareaInput = (event: Event) => {
+  const target = event.target as HTMLTextAreaElement
+  noteForm.value.content = target.value
+}
+
+// 插入Markdown语法
+const insertMarkdown = (before: string, after: string) => {
+  const textarea = document.querySelector('.markdown-textarea') as HTMLTextAreaElement
+  if (!textarea) return
+  
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const text = textarea.value
+  const beforeText = text.substring(0, start)
+  const selectedText = text.substring(start, end)
+  const afterText = text.substring(end)
+  
+  const newText = beforeText + before + selectedText + after
+  textarea.value = newText
+  noteForm.value.content = newText
+  
+  // 设置光标位置
+  const newCursorPos = start + before.length + selectedText.length + after.length
+  textarea.setSelectionRange(newCursorPos, newCursorPos)
+  textarea.focus()
 }
 
 // HTML 清理函数
@@ -666,6 +721,122 @@ textarea {
 :deep(.bytemd) {
   border: none !important;
   min-height: 400px;
+}
+
+/* 隐藏不需要的工具栏元素 */
+:deep(.bytemd-toolbar .bytemd-toolbar-icon) {
+  display: none;
+}
+
+:deep(.bytemd-toolbar .bytemd-toolbar-icon:first-child),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon:nth-child(2)),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon:nth-child(3)),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon:nth-child(4)),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon:nth-child(5)),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon:nth-child(6)) {
+  display: inline-block;
+}
+
+/* 隐藏Markdown语法提示 */
+:deep(.bytemd-editor .bytemd-editor-content::before),
+:deep(.bytemd-editor .bytemd-editor-content::after) {
+  display: none;
+}
+
+/* 隐藏编辑器中的额外内容 */
+:deep(.bytemd-editor .bytemd-editor-content > div:not(.bytemd-editor-textarea)) {
+  display: none;
+}
+
+/* 确保只显示文本输入区域 */
+:deep(.bytemd-editor .bytemd-editor-textarea) {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  outline: none !important;
+  resize: none !important;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  padding: 16px !important;
+}
+
+/* 隐藏编辑器中的其他内容 */
+:deep(.bytemd-editor .bytemd-editor-content > *:not(.bytemd-editor-textarea)) {
+  display: none !important;
+}
+
+/* 隐藏工具栏中的不必要按钮 */
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Heading"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Table"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Code"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Quote"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="List"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Link"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Image"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Help"]) {
+  display: none !important;
+}
+
+/* 只保留基本的格式化按钮 */
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Bold"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Italic"]),
+:deep(.bytemd-toolbar .bytemd-toolbar-icon[title*="Strikethrough"]) {
+  display: inline-block !important;
+}
+
+/* 自定义编辑器样式 */
+.custom-editor {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.markdown-textarea {
+  width: 100%;
+  min-height: 400px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 16px;
+  background-color: #fafafa;
+}
+
+.markdown-textarea:focus {
+  background-color: white;
+}
+
+.editor-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  background-color: #f5f5f5;
+  border-top: 1px solid #ddd;
+  flex-wrap: wrap;
+}
+
+.editor-toolbar button {
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.editor-toolbar button:hover {
+  background-color: #f0f0f0;
+  border-color: #999;
+}
+
+.editor-toolbar button:active {
+  background-color: #e0e0e0;
 }
 
 :deep(.bytemd-toolbar) {

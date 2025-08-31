@@ -23,6 +23,7 @@
       
       <el-menu
         :default-active="$route.path"
+        :default-openeds="['plugins']"
         :collapse="isCollapsed"
         router
         class="sidebar-menu"
@@ -287,6 +288,27 @@ onMounted(async () => {
 :deep(.el-menu-item.is-active) {
   background-color: #409eff !important;
   color: white !important;
+}
+
+/* 修复子菜单背景颜色 */
+:deep(.el-sub-menu .el-menu-item) {
+  background-color: #1f2d3d !important;
+  color: #bfcbd9 !important;
+}
+
+:deep(.el-sub-menu .el-menu-item:hover) {
+  background-color: #263445 !important;
+  color: #409eff !important;
+}
+
+:deep(.el-sub-menu .el-menu-item.is-active) {
+  background-color: #409eff !important;
+  color: white !important;
+}
+
+/* 子菜单容器背景 */
+:deep(.el-sub-menu .el-menu) {
+  background-color: #1f2d3d !important;
 }
 
 .header {
