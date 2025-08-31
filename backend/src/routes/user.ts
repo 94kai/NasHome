@@ -14,20 +14,14 @@ const authService = new AuthService(db)
 
   // 用户注册
   fastify.post('/register', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { username, password, email } = request.body as any
+    const { username, password } = request.body as any
     try {
       const existingUser = await authService.findUserByUsername(username)
       if (existingUser) {
         return reply.status(409).send({ success: false, message: 'Username already exists' } as ApiResponse)
       }
-      if (email) {
-        const existingUserByEmail = await authService.findUserByEmail(email)
-        if (existingUserByEmail) {
-          return reply.status(409).send({ success: false, message: 'Email already exists' } as ApiResponse)
-        }
-      }
-      const user = await authService.createUser(username, password, email)
-      const response: ApiResponse = { success: true, data: { id: user.id, username: user.username, email: user.email }, timestamp: Date.now() }
+      const user = await authService.createUser(username, password)
+      const response: ApiResponse = { success: true, data: { id: user.id, username: user.username }, timestamp: Date.now() }
       return reply.status(201).send(response)
     } catch (error) {
       console.error(error)

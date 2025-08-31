@@ -2,7 +2,12 @@
   <div class="notes-container">
     <div class="notes-header">
       <h1>我的笔记</h1>
-      <button @click="createNewNote" class="primary-button">新建笔记</button>
+      <div class="header-actions">
+        <button @click="togglePreview" class="secondary-button">
+          {{ showPreview ? '编辑模式' : '预览模式' }}
+        </button>
+        <button @click="createNewNote" class="primary-button">新建笔记</button>
+      </div>
     </div>
 
     <div v-if="isLoading" class="loading">
@@ -59,12 +64,27 @@
         </div>
         <div class="form-group">
           <label for="note-content">内容</label>
-          <textarea
-            id="note-content"
-            v-model="noteForm.content"
-            placeholder="输入笔记内容"
-            rows="8"
-          ></textarea>
+          <div class="editor-container">
+            <!-- Markdown 编辑器 -->
+            <div v-if="!showPreview" class="editor-wrapper">
+              <bytemd
+                v-model="noteForm.content"
+                :plugins="editorPlugins"
+                :upload-images="handleImageUpload"
+                :sanitize="sanitize"
+                placeholder="输入笔记内容，支持 Markdown 语法..."
+                @change="handleContentChange"
+              />
+            </div>
+
+            <!-- 预览模式 -->
+            <div v-else class="preview-wrapper">
+              <div class="preview-toolbar">
+                <button @click="togglePreview" class="preview-button">返回编辑</button>
+              </div>
+              <div class="preview-content" v-html="renderedContent"></div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="dialog-footer">
@@ -78,12 +98,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import type { ApiResponse } from '@/types'
 import { fetchNotes as fetchNotesApi, createNote, updateNote, deleteNote as deleteNoteApi } from '@/api/notes'
 import { Edit, Delete } from '@element-plus/icons-vue'
+
+// ByteMD 相关导入
+import { Editor as Bytemd, Viewer } from '@bytemd/vue-next'
+import gfm from '@bytemd/plugin-gfm'
+import highlight from '@bytemd/plugin-highlight-ssr'
+import breaks from '@bytemd/plugin-breaks'
+import sanitize from 'sanitize-html'
+import MarkdownIt from 'markdown-it'
 
 // 状态定义
 const notes = ref<any[]>([])
@@ -91,6 +119,7 @@ const isLoading = ref(false)
 const error = ref('')
 const showNoteDialog = ref(false)
 const editingNoteId = ref<number | null>(null)
+const showPreview = ref(false)
 const noteForm = ref({
   title: '',
   content: ''
@@ -98,6 +127,35 @@ const noteForm = ref({
 const savingNote = ref(false)
 const router = useRouter()
 const userStore = useUserStore()
+
+// Markdown 编辑器配置
+const editorPlugins = [gfm(), highlight(), breaks()]
+
+// HTML 清理配置
+const sanitizeOptions = {
+  allowedTags: sanitize.defaults.allowedTags.concat(['img', 'pre', 'code', 'blockquote']),
+  allowedAttributes: {
+    ...sanitize.defaults.allowedAttributes,
+    'img': ['src', 'alt', 'title', 'width', 'height'],
+    'pre': ['class'],
+    'code': ['class']
+  }
+}
+
+// Markdown 渲染器
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true
+})
+
+// 计算属性
+const renderedContent = computed(() => {
+  if (!noteForm.value.content) return ''
+  const html = md.render(noteForm.value.content)
+  return sanitizeHtml(html)
+})
 
 // 生命周期钩子
 onMounted(() => {
@@ -230,6 +288,109 @@ const formatDate = (timestamp: number) => {
   const date = new Date(timestamp)
   return date.toLocaleString()
 }
+
+// 切换预览模式
+const togglePreview = () => {
+  showPreview.value = !showPreview.value
+}
+
+// 处理内容变化
+const handleContentChange = (value: string) => {
+  noteForm.value.content = value
+}
+
+// HTML 清理函数
+const sanitizeHtml = (html: string) => {
+  return sanitize(html, sanitizeOptions)
+}
+
+// 测试登录
+const testLogin = async () => {
+  try {
+    const response = await userStore.login('testuser3', 'password123')
+    if (response) {
+      console.log('登录成功')
+      fetchNotes()
+    }
+  } catch (error) {
+    console.error('登录失败:', error)
+  }
+}
+
+// 图片上传处理
+const handleImageUpload = async (files: File[]) => {
+  const uploadedImages = []
+
+  for (const file of files) {
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const response = await fetch('/api/notes/upload-image', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${userStore.token}`
+        }
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.data && result.data.length > 0) {
+        const uploadedImage = result.data[0]
+        uploadedImages.push({
+          url: uploadedImage.url,
+          alt: file.name,
+          title: file.name
+        })
+      } else {
+        console.error('Upload failed:', result.message)
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+    }
+  }
+
+  return uploadedImages
+}
+
+// 拖拽上传处理
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault()
+}
+
+const handleDrop = async (event: DragEvent) => {
+  event.preventDefault()
+  const files = Array.from(event.dataTransfer?.files || [])
+  const imageFiles = files.filter(file => file.type.startsWith('image/'))
+
+  if (imageFiles.length > 0) {
+    await handleImageUpload(imageFiles)
+  }
+}
+
+// 粘贴上传处理
+const handlePaste = async (event: ClipboardEvent) => {
+  const items = event.clipboardData?.items
+  if (!items) return
+
+  const imageFiles = []
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item.type.indexOf('image') !== -1) {
+      const file = item.getAsFile()
+      if (file) {
+        imageFiles.push(file)
+      }
+    }
+  }
+
+  if (imageFiles.length > 0) {
+    event.preventDefault()
+    await handleImageUpload(imageFiles)
+  }
+}
 </script>
 
 <style scoped>
@@ -244,6 +405,14 @@ const formatDate = (timestamp: number) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .primary-button {
@@ -444,5 +613,173 @@ textarea {
 
 .secondary-button:hover {
   background-color: #e5e7eb;
+}
+
+/* 编辑器样式 */
+.editor-container {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+.editor-wrapper {
+  min-height: 400px;
+}
+
+.preview-wrapper {
+  min-height: 400px;
+  background-color: #fafafa;
+}
+
+.preview-toolbar {
+  padding: 12px 16px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.preview-button {
+  background-color: #4263eb;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.preview-button:hover {
+  background-color: #3653d9;
+}
+
+.preview-content {
+  padding: 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* ByteMD 编辑器样式覆盖 */
+:deep(.bytemd) {
+  border: none !important;
+  min-height: 400px;
+}
+
+:deep(.bytemd-toolbar) {
+  border-bottom: 1px solid #ddd;
+  padding: 8px 12px;
+}
+
+:deep(.bytemd-editor) {
+  min-height: 350px;
+  padding: 12px 16px;
+}
+
+:deep(.bytemd-preview) {
+  padding: 16px;
+  border-left: 1px solid #ddd;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .notes-container {
+    padding: 10px;
+  }
+
+  .notes-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-actions {
+    justify-content: space-between;
+  }
+
+  .notes-list {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .note-card {
+    padding: 15px;
+  }
+
+  .dialog {
+    width: 95%;
+    max-height: 90vh;
+  }
+
+  .editor-container {
+    min-height: 300px;
+  }
+
+  .editor-wrapper,
+  .preview-wrapper {
+    min-height: 300px;
+  }
+
+  /* 移动端ByteMD样式调整 */
+  :deep(.bytemd) {
+    font-size: 16px; /* 防止iOS缩放 */
+  }
+
+  :deep(.bytemd-toolbar) {
+    flex-wrap: wrap;
+    padding: 6px 8px;
+  }
+
+  :deep(.bytemd-editor) {
+    min-height: 250px;
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+
+  :deep(.bytemd-preview) {
+    padding: 12px;
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .notes-container {
+    padding: 5px;
+  }
+
+  .note-card {
+    padding: 12px;
+  }
+
+  .dialog {
+    width: 98%;
+    margin: 5px;
+  }
+
+  .dialog-content {
+    padding: 12px;
+  }
+
+  .form-group {
+    margin-bottom: 12px;
+  }
+
+  input, textarea {
+    font-size: 16px; /* 防止iOS缩放 */
+  }
+}
+
+/* 图片样式 */
+.preview-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+.editor-container img {
+  max-width: 100%;
+  height: auto;
 }
 </style>

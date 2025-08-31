@@ -5,7 +5,6 @@ import { api } from '@/api/request'
 interface User {
   id: number
   username: string
-  email?: string
 }
 
 interface LoginForm {
@@ -16,20 +15,48 @@ interface LoginForm {
 interface RegisterForm {
   username: string
   password: string
-  email?: string
 }
 
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
   const token = ref<string | null>(localStorage.getItem('token'))
-  
+  const initialized = ref(false)
+  const initializing = ref(false)
+
   const isAuthenticated = computed(() => !!token.value)
-  
+
   // 初始化用户状态
-  const initUser = () => {
-    const storedUser = localStorage.getItem('user')
-    if (storedUser) {
-      user.value = JSON.parse(storedUser)
+  const initUser = async () => {
+    if (initialized.value) return
+    if (initializing.value) return
+
+    initializing.value = true
+
+    try {
+      const storedUser = localStorage.getItem('user')
+      const storedToken = localStorage.getItem('token')
+
+      if (storedToken && storedUser) {
+        token.value = storedToken
+        user.value = JSON.parse(storedUser)
+        initialized.value = true
+      } else {
+        // 如果没有存储的用户信息，清除可能的残留token
+        token.value = null
+        user.value = null
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        initialized.value = true
+      }
+    } catch (error) {
+      console.error('Failed to initialize user:', error)
+      token.value = null
+      user.value = null
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      initialized.value = true
+    } finally {
+      initializing.value = false
     }
   }
   
@@ -42,8 +69,7 @@ export const useUserStore = defineStore('user', () => {
         token.value = response.data.token
         user.value = {
           id: response.data.id,
-          username,
-          email: response.data.email
+          username
         }
 
         // 保存到本地存储
@@ -51,6 +77,9 @@ export const useUserStore = defineStore('user', () => {
           localStorage.setItem('token', token.value)
         }
         localStorage.setItem('user', JSON.stringify(user.value))
+
+        // 更新初始化状态
+        initialized.value = true
 
         return true
       }
@@ -62,10 +91,10 @@ export const useUserStore = defineStore('user', () => {
   }
   
   // 用户注册
-  const register = async (username: string, password: string, email?: string) => {
+  const register = async (username: string, password: string) => {
     try {
-      const response = await api.post('/register', { username, password, email })
-      
+      const response = await api.post('/register', { username, password })
+
       if (response.success) {
         return true
       }
@@ -80,19 +109,23 @@ export const useUserStore = defineStore('user', () => {
   const logout = () => {
     user.value = null
     token.value = null
-    
+    initialized.value = true // 登出后也算是初始化完成
+
     // 清除本地存储
     localStorage.removeItem('token')
     localStorage.removeItem('user')
   }
-  
-  // 初始化
+
+  // 初始化（异步）
   initUser()
-  
+
   return {
     user,
     token,
+    initialized,
+    initializing,
     isAuthenticated,
+    initUser,
     login,
     register,
     logout

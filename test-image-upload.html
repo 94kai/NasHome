@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片上传测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #4a90e2;
+        }
+        .upload-area.dragover {
+            border-color: #4a90e2;
+            background-color: #f0f8ff;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .preview {
+            margin-top: 20px;
+        }
+        .preview img {
+            max-width: 200px;
+            max-height: 200px;
+            margin: 10px;
+            border-radius: 8px;
+        }
+        button {
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #357abd;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>图片上传功能测试</h1>
+
+    <div class="upload-area" id="uploadArea">
+        <p>点击选择文件或拖拽图片到此处</p>
+        <input type="file" id="fileInput" accept="image/*" multiple>
+    </div>
+
+    <button onclick="uploadImages()">上传图片</button>
+    <button onclick="clearPreview()">清空预览</button>
+
+    <div class="preview" id="preview"></div>
+
+    <div id="result"></div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const result = document.getElementById('result');
+
+        // 点击上传区域选择文件
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // 文件选择变化
+        fileInput.addEventListener('change', handleFiles);
+
+        // 拖拽事件
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            handleFiles({ target: { files } });
+        });
+
+        function handleFiles(event) {
+            const files = event.target.files;
+            preview.innerHTML = '';
+
+            for (let file of files) {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        preview.appendChild(img);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            fileInput.files = files;
+        }
+
+        async function uploadImages() {
+            const files = fileInput.files;
+            if (files.length === 0) {
+                alert('请先选择图片文件');
+                return;
+            }
+
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('image', file);
+            }
+
+            try {
+                const response = await fetch('http://localhost:3000/api/notes/upload-image', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Authorization': 'Bearer test-token' // 这里需要实际的token
+                    }
+                });
+
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+
+                if (data.success) {
+                    alert('图片上传成功！');
+                } else {
+                    alert('上传失败：' + data.message);
+                }
+            } catch (error) {
+                result.textContent = '错误：' + error.message;
+                alert('上传失败：' + error.message);
+            }
+        }
+
+        function clearPreview() {
+            preview.innerHTML = '';
+            fileInput.value = '';
+            result.textContent = '';
+        }
+    </script>
+</body>
+</html>

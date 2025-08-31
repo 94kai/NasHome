@@ -80,7 +80,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ApiResponse } from '@/types'
+import type { ApiResponse } from '@/types'
 import { fetchNotes as fetchNotesApi, createNote, updateNote, deleteNote as deleteNoteApi } from '@/api/notes'
 
 // 状态定义

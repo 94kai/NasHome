@@ -39,6 +39,12 @@ export interface PluginComponent {
   menu?: MenuConfig
 }
 
+// 用户信息
+export interface User {
+  id: number
+  username: string
+}
+
 // 系统信息
 export interface SystemInfo {
   platform: string

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Notes功能测试</h1>
+
+    <div class="test-section">
+        <h2>1. 检查后端服务状态</h2>
+        <button onclick="testBackendHealth()">测试后端健康检查</button>
+        <div id="backend-health-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. 检查插件状态</h2>
+        <button onclick="testPluginsStatus()">检查插件状态</button>
+        <div id="plugins-status-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. 用户注册</h2>
+        <input type="text" id="register-username" placeholder="用户名" value="testuser4">
+        <input type="password" id="register-password" placeholder="密码" value="password123">
+        <button onclick="testUserRegister()">注册用户</button>
+        <div id="register-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. 用户登录</h2>
+        <input type="text" id="login-username" placeholder="用户名" value="testuser4">
+        <input type="password" id="login-password" placeholder="密码" value="password123">
+        <button onclick="testUserLogin()">登录</button>
+        <div id="login-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Notes API测试</h2>
+        <button onclick="testNotesAPI()">测试Notes API</button>
+        <div id="notes-api-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>6. 前端页面测试</h2>
+        <button onclick="openNotesPage()">打开Notes页面</button>
+        <div id="frontend-test-result"></div>
+    </div>
+
+    <script>
+        let authToken = null;
+
+        function showResult(elementId, result, isSuccess = null) {
+            const element = document.getElementById(elementId);
+            const className = isSuccess === true ? 'success' : isSuccess === false ? 'error' : 'info';
+            element.innerHTML = `<pre class="${className}">${result}</pre>`;
+        }
+
+        async function testBackendHealth() {
+            try {
+                const response = await fetch('http://localhost:3000/api/health');
+                const data = await response.json();
+                showResult('backend-health-result', JSON.stringify(data, null, 2), data.success);
+            } catch (error) {
+                showResult('backend-health-result', `错误: ${error.message}`, false);
+            }
+        }
+
+        async function testPluginsStatus() {
+            try {
+                const response = await fetch('http://localhost:3000/api/plugins');
+                const data = await response.json();
+                showResult('plugins-status-result', JSON.stringify(data, null, 2), data.success);
+            } catch (error) {
+                showResult('plugins-status-result', `错误: ${error.message}`, false);
+            }
+        }
+
+        async function testUserRegister() {
+            const username = document.getElementById('register-username').value;
+            const password = document.getElementById('register-password').value;
+
+            try {
+                const response = await fetch('http://localhost:3000/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                showResult('register-result', JSON.stringify(data, null, 2), data.success);
+            } catch (error) {
+                showResult('register-result', `错误: ${error.message}`, false);
+            }
+        }
+
+        async function testUserLogin() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const response = await fetch('http://localhost:3000/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (data.success && data.data?.token) {
+                    authToken = data.data.token;
+                }
+                showResult('login-result', JSON.stringify(data, null, 2), data.success);
+            } catch (error) {
+                showResult('login-result', `错误: ${error.message}`, false);
+            }
+        }
+
+        async function testNotesAPI() {
+            if (!authToken) {
+                showResult('notes-api-result', '请先登录获取token', false);
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:3000/api/notes', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                const data = await response.json();
+                showResult('notes-api-result', JSON.stringify(data, null, 2), response.ok);
+            } catch (error) {
+                showResult('notes-api-result', `错误: ${error.message}`, false);
+            }
+        }
+
+        function openNotesPage() {
+            window.open('http://localhost:5173/plugins/notes', '_blank');
+            showResult('frontend-test-result', '已在新标签页中打开Notes页面，请手动测试功能', true);
+        }
+
+        // 页面加载时自动测试后端状态
+        window.onload = function() {
+            testBackendHealth();
+        };
+    </script>
+</body>
+</html>

@@ -69,20 +69,31 @@ const router = createRouter({
 // 动态添加插件路由
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
-  
+
+  // 等待用户状态初始化完成
+  if (!userStore.initialized) {
+    await userStore.initUser()
+  }
+
   // 检查是否需要认证
   if (to.meta.requiresAuth && !userStore.isAuthenticated) {
     // 重定向到登录页
     next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }
-  
+
   // 如果用户已登录且访问的是登录或注册页面，重定向到首页
   if (userStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
     next({ path: '/' })
     return
   }
-  
+
+  // 对于需要认证的路由，如果没有登录，强制跳转到登录页
+  if (to.meta.requiresAuth === true && !userStore.isAuthenticated) {
+    next({ path: '/login', query: { redirect: to.fullPath } })
+    return
+  }
+
   // 确保插件路由已加载
   const pluginRoutes = pluginManager.getPluginRoutes()
   pluginRoutes.forEach(route => {
@@ -91,7 +102,7 @@ router.beforeEach(async (to, from, next) => {
       router.addRoute(route)
     }
   })
-  
+
   // 如果路由不存在，可能是动态添加的，重新解析
   if (to.matched.length === 0) {
     const resolved = router.resolve(to.path)
@@ -100,7 +111,7 @@ router.beforeEach(async (to, from, next) => {
       return
     }
   }
-  
+
   next()
 })
 

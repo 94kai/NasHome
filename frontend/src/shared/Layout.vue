@@ -1,5 +1,17 @@
 <template>
-  <el-container class="layout-container">
+  <!-- 加载状态 -->
+  <div v-if="!userStore.initialized || userStore.initializing" class="loading-container">
+    <el-icon size="48" class="is-loading">
+      <Loading />
+    </el-icon>
+    <p>正在加载...</p>
+  </div>
+
+  <!-- 登录页直接显示 -->
+  <router-view v-else-if="$route.path === '/login' || $route.path === '/register'" />
+
+  <!-- 已登录用户显示主界面 -->
+  <el-container v-else-if="userStore.isAuthenticated" class="layout-container">
     <!-- 侧边栏 -->
     <el-aside :width="isCollapsed ? '64px' : '250px'" class="sidebar">
       <div class="logo">
@@ -111,6 +123,17 @@
       </el-main>
     </el-container>
   </el-container>
+
+  <!-- 未登录用户自动重定向到登录页 -->
+  <div v-else class="unauthenticated-container">
+    <div class="redirect-message">
+      <el-icon size="48" class="redirect-icon">
+        <User />
+      </el-icon>
+      <h3>需要登录</h3>
+      <p>正在跳转到登录页面...</p>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -127,7 +150,8 @@ import {
   Expand,
   Fold,
   User,
-  UserFilled
+  UserFilled,
+  Loading
 } from '@element-plus/icons-vue'
 
 const systemStore = useSystemStore()
@@ -169,24 +193,35 @@ const handleLogout = async () => {
 
 // 生命周期
 onMounted(async () => {
+  // 等待用户状态初始化完成
+  if (!userStore.initialized) {
+    await userStore.initUser()
+  }
+
+  // 如果用户未登录，跳转到登录页
+  if (!userStore.isAuthenticated) {
+    router.push('/login')
+    return
+  }
+
   // 初始化系统数据
   await systemStore.initialize()
-  
+
   // 连接 WebSocket
   try {
     await wsManager.connect()
-    
+
     // 监听插件状态变化
     wsManager.on('plugin:installed', () => {
       systemStore.loadPlugins()
       systemStore.loadMenus()
     })
-    
+
     wsManager.on('plugin:uninstalled', () => {
       systemStore.loadPlugins()
       systemStore.loadMenus()
     })
-    
+
     wsManager.on('plugin:toggled', () => {
       systemStore.loadPlugins()
       systemStore.loadMenus()
@@ -278,5 +313,66 @@ onMounted(async () => {
 .main-content {
   background-color: #f0f2f5;
   padding: 20px;
+}
+
+/* 加载状态样式 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 16px;
+}
+
+.loading-container p {
+  color: #666;
+  font-size: 14px;
+}
+
+.loading-container .el-icon {
+  animation: loading-rotate 2s linear infinite;
+}
+
+@keyframes loading-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* 未登录状态样式 */
+.unauthenticated-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.redirect-message {
+  text-align: center;
+  padding: 40px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.redirect-icon {
+  color: #409eff;
+  margin-bottom: 16px;
+}
+
+.redirect-message h3 {
+  margin: 0 0 8px 0;
+  color: #303133;
+}
+
+.redirect-message p {
+  margin: 0;
+  color: #909399;
+  font-size: 14px;
 }
 </style>

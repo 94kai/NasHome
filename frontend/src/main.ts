@@ -7,27 +7,32 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
 import { pluginManager } from './core/PluginManager'
+import { useUserStore } from './stores/user'
 
 async function bootstrap() {
   const app = createApp(App)
   const pinia = createPinia()
-  
+
   // 注册插件
   app.use(pinia)
   app.use(router)
   app.use(ElementPlus)
-  
+
   // 注册所有图标
   for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
     app.component(key, component)
   }
-  
+
+  // 应用挂载前先初始化用户状态
+  const userStore = useUserStore()
+  await userStore.initUser()
+
   // 初始化插件管理器
   pluginManager.initialize(app)
-  
+
   // 加载内置插件
   await loadBuiltinPlugins()
-  
+
   // 挂载应用
   app.mount('#app')
 }

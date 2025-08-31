@@ -4,6 +4,7 @@ import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import staticFiles from '@fastify/static'
 import websocket from '@fastify/websocket'
+import multipart from '@fastify/multipart'
 import * as path from 'path'
 
 import { config, ensureDataDir } from '@/utils/config'
@@ -30,6 +31,21 @@ async function createApp() {
       credentials: true
     })
   }
+
+  // 注册 multipart 用于文件上传
+  await app.register(multipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB
+      files: 10
+    }
+  })
+
+  // 注册静态文件服务
+  await app.register(staticFiles, {
+    root: path.join(process.cwd(), 'uploads'),
+    prefix: '/uploads/',
+    decorateReply: false
+  })
 
   // 注册 Swagger 文档
   await app.register(swagger, {

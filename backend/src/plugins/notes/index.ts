@@ -2,6 +2,10 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { IPlugin, PluginRoute, ApiResponse } from '@/types'
 import { SQLiteAdapter } from '@/core/Database'
 import jwt from 'jsonwebtoken'
+import * as fs from 'fs/promises'
+import * as path from 'path'
+import { v4 as uuidv4 } from 'uuid'
+import * as crypto from 'crypto'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
 
@@ -44,15 +48,34 @@ const initNoteTable = async (db: SQLiteAdapter) => {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `)
-  console.log('Notes table initialized')
+
+  // 创建图片附件表
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS note_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL,
+      filename TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      path TEXT NOT NULL,
+      url TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
+    )
+  `)
+
+  console.log('Notes tables initialized')
 }
 
 // 笔记服务
 class NoteService {
   private db: SQLiteAdapter
+  private uploadDir: string
 
   constructor(db: SQLiteAdapter) {
     this.db = db
+    this.uploadDir = path.join(process.cwd(), 'uploads', 'images')
   }
 
   // 创建笔记
@@ -114,6 +137,79 @@ class NoteService {
   async deleteNote(userId: number, noteId: number): Promise<boolean> {
     const result = await this.db.run('DELETE FROM notes WHERE id = ? AND user_id = ?', [noteId, userId])
     return result.changes > 0
+  }
+
+  // 上传图片
+  async uploadImage(userId: number, file: any): Promise<{ url: string; filename: string }> {
+    // 确保上传目录存在
+    await this.ensureUploadDir()
+
+    // 生成唯一文件名
+    const ext = path.extname(file.originalname || 'image.jpg')
+    const filename = `${uuidv4()}${ext}`
+    const filepath = path.join(this.uploadDir, filename)
+
+    // 保存文件
+    await fs.writeFile(filepath, file.buffer || file)
+
+    // 生成URL
+    const url = `/uploads/images/${filename}`
+
+    return { url, filename }
+  }
+
+  // 保存图片附件记录
+  async saveImageAttachment(noteId: number, filename: string, originalName: string, mimeType: string, size: number): Promise<void> {
+    const filepath = path.join(this.uploadDir, filename)
+    const now = Date.now()
+
+    await this.db.run(
+      'INSERT INTO note_attachments (note_id, filename, original_name, mime_type, size, path, url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [noteId, filename, originalName, mimeType, size, filepath, `/uploads/images/${filename}`, now]
+    )
+  }
+
+  // 获取笔记的附件列表
+  async getNoteAttachments(noteId: number): Promise<any[]> {
+    const rows = await this.db.query('SELECT * FROM note_attachments WHERE note_id = ? ORDER BY created_at DESC', [noteId])
+    return rows.map((row: any) => ({
+      id: row.id,
+      filename: row.filename,
+      originalName: row.original_name,
+      mimeType: row.mime_type,
+      size: row.size,
+      url: row.url,
+      createdAt: row.created_at
+    }))
+  }
+
+  // 删除图片附件
+  async deleteImageAttachment(attachmentId: number): Promise<boolean> {
+    // 获取附件信息
+    const rows = await this.db.query('SELECT * FROM note_attachments WHERE id = ?', [attachmentId])
+    if (rows.length === 0) return false
+
+    const attachment = rows[0]
+
+    // 删除文件
+    try {
+      await fs.unlink(attachment.path)
+    } catch (error) {
+      console.warn('Failed to delete file:', error)
+    }
+
+    // 删除数据库记录
+    const result = await this.db.run('DELETE FROM note_attachments WHERE id = ?', [attachmentId])
+    return result.changes > 0
+  }
+
+  // 确保上传目录存在
+  private async ensureUploadDir(): Promise<void> {
+    try {
+      await fs.access(this.uploadDir)
+    } catch {
+      await fs.mkdir(this.uploadDir, { recursive: true })
+    }
   }
 }
 
@@ -288,6 +384,127 @@ export class NotesPlugin implements IPlugin {
           }
 
           return reply.send({ success: true, message: 'Note deleted successfully', timestamp: Date.now() } as ApiResponse)
+        } catch (error) {
+          console.error(error)
+          return reply.status(500).send({ success: false, message: 'Internal Server Error', timestamp: Date.now() } as ApiResponse)
+        }
+      }
+    },
+    {
+      method: 'POST',
+      url: '/api/notes/upload-image',
+      preHandler: [authMiddleware],
+      handler: async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const user = request.user
+          if (!user) {
+            return reply.status(401).send({ success: false, message: 'Unauthorized', timestamp: Date.now() } as ApiResponse)
+          }
+
+          const parts = request.parts()
+          const files = []
+
+          for await (const part of parts) {
+            if (part.type === 'file' && part.fieldname === 'image') {
+              const buffer = await part.toBuffer()
+              files.push({
+                buffer,
+                originalname: part.filename,
+                mimetype: part.mimetype,
+                size: buffer.length
+              })
+            }
+          }
+
+          if (files.length === 0) {
+            return reply.status(400).send({ success: false, message: 'No files uploaded', timestamp: Date.now() } as ApiResponse)
+          }
+
+          const db = new SQLiteAdapter(process.env.DB_PATH || 'data/database.db')
+          await db.connect()
+          const noteService = new NoteService(db)
+
+          const uploadedImages = []
+
+          for (const file of files) {
+            try {
+              const result = await noteService.uploadImage(user.id, file)
+
+              uploadedImages.push({
+                url: result.url,
+                filename: result.filename,
+                originalName: file.originalname,
+                mimeType: file.mimetype,
+                size: file.size
+              })
+            } catch (error) {
+              console.error('Failed to upload image:', error)
+            }
+          }
+
+          await db.disconnect()
+
+          return reply.send({
+            success: true,
+            data: uploadedImages,
+            timestamp: Date.now()
+          } as ApiResponse)
+        } catch (error) {
+          console.error(error)
+          return reply.status(500).send({ success: false, message: 'Internal Server Error', timestamp: Date.now() } as ApiResponse)
+        }
+      }
+    },
+    {
+      method: 'GET',
+      url: '/api/notes/:id/attachments',
+      preHandler: [authMiddleware],
+      handler: async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const { id: noteId } = request.params as any
+          const user = request.user
+          if (!user) {
+            return reply.status(401).send({ success: false, message: 'Unauthorized', timestamp: Date.now() } as ApiResponse)
+          }
+
+          const db = new SQLiteAdapter(process.env.DB_PATH || 'data/database.db')
+          await db.connect()
+          const noteService = new NoteService(db)
+
+          const attachments = await noteService.getNoteAttachments(parseInt(noteId))
+          await db.disconnect()
+
+          return reply.send({ success: true, data: attachments, timestamp: Date.now() } as ApiResponse)
+        } catch (error) {
+          console.error(error)
+          return reply.status(500).send({ success: false, message: 'Internal Server Error', timestamp: Date.now() } as ApiResponse)
+        }
+      }
+    },
+    {
+      method: 'DELETE',
+      url: '/api/notes/attachments/:id',
+      preHandler: [authMiddleware],
+      handler: async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const { id: attachmentId } = request.params as any
+          const user = request.user
+          if (!user) {
+            return reply.status(401).send({ success: false, message: 'Unauthorized', timestamp: Date.now() } as ApiResponse)
+          }
+
+          const db = new SQLiteAdapter(process.env.DB_PATH || 'data/database.db')
+          await db.connect()
+          const noteService = new NoteService(db)
+
+          const success = await noteService.deleteImageAttachment(parseInt(attachmentId))
+          await db.disconnect()
+
+          if (!success) {
+            return reply.status(404).send({ success: false, message: 'Attachment not found', timestamp: Date.now() } as ApiResponse)
+          }
+
+          return reply.send({ success: true, message: 'Attachment deleted successfully', timestamp: Date.now() } as ApiResponse)
         } catch (error) {
           console.error(error)
           return reply.status(500).send({ success: false, message: 'Internal Server Error', timestamp: Date.now() } as ApiResponse)

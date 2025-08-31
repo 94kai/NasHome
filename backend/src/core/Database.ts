@@ -1,7 +1,6 @@
-import sqlite3 from 'sqlite3'
+import * as sqlite3 from 'sqlite3'
 import { DatabaseAdapter } from '@/types';
 import { promisify } from 'util';
-import * as sqlite3 from 'sqlite3';
 
 /**
  * SQLite 数据库适配器
@@ -92,7 +91,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL,
-        email TEXT UNIQUE,
         created_at INTEGER NOT NULL
       )
     `)
@@ -126,7 +124,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL,
-        email TEXT UNIQUE,
         created_at INTEGER
       )
     `)

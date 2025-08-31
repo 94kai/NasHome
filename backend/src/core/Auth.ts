@@ -16,17 +16,16 @@ export class AuthService {
     return bcrypt.hash(password, SALT_ROUNDS)
   }
 
-  async createUser(username: string, password: string, email?: string): Promise<User> {
+  async createUser(username: string, password: string): Promise<User> {
     const hashedPassword = await this.hashPassword(password)
     const now = Date.now()
     const result = await this.db.run(
-      'INSERT INTO users (username, password, email, created_at) VALUES (?, ?, ?, ?)',
-      [username, hashedPassword, email, now]
+      'INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)',
+      [username, hashedPassword, now]
     )
     return {
       id: result.lastID,
       username,
-      email,
       createdAt: now
     }
   }
@@ -46,25 +45,11 @@ export class AuthService {
         id: user.id,
         username: user.username,
         password: user.password,
-        email: user.email,
         createdAt: user.created_at
       }
     }
     return null
   }
 
-  async findUserByEmail(email: string): Promise<User | null> {
-    const row = await this.db.query('SELECT * FROM users WHERE email = ?', [email])
-    if (row.length > 0) {
-      const user = row[0]
-      return {
-        id: user.id,
-        username: user.username,
-        password: user.password,
-        email: user.email,
-        createdAt: user.created_at
-      }
-    }
-    return null
-  }
+
 }

@@ -13,15 +13,7 @@
             placeholder="请输入用户名"
           />
         </div>
-        <div class="form-group">
-          <label for="email">邮箱</label>
-          <input
-            type="email"
-            id="email"
-            v-model="form.email"
-            placeholder="请输入邮箱（可选）"
-          />
-        </div>
+
         <div class="form-group">
           <label for="password">密码</label>
           <input
@@ -63,7 +55,6 @@ const userStore = useUserStore()
 
 const form = reactive({
   username: '',
-  email: '',
   password: '',
   confirmPassword: ''
 })
@@ -81,7 +72,7 @@ const handleRegister = async () => {
   }
   
   try {
-    await userStore.register(form.username, form.password, form.email)
+    await userStore.register(form.username, form.password)
     success.value = '注册成功，即将跳转到登录页面'
     setTimeout(() => {
       router.push('/login')
