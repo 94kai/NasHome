@@ -1,18 +1,32 @@
 const express = require('express');
 const { query, get, run } = require('../models/database');
 const { authenticateToken, optionalAuth } = require('../middleware/auth');
+const { getToolRegistry } = require('../config/tools');
 
 const router = express.Router();
 
 // 获取工具列表
 router.get('/tools', optionalAuth, async (req, res) => {
   try {
-    const tools = await query(`
-      SELECT id, name, description, url, icon, category, is_active, created_at 
-      FROM tools 
-      WHERE is_active = 1 
-      ORDER BY category, name
-    `);
+    const { category, active_only = 'true' } = req.query;
+    const toolRegistry = getToolRegistry();
+    
+    let tools;
+    if (category) {
+      // 按分类获取工具
+      tools = toolRegistry.getToolsByCategory(category, active_only === 'true');
+    } else {
+      // 获取所有工具
+      tools = toolRegistry.getAllTools(active_only === 'true');
+    }
+
+    // 按分类和名称排序
+    tools.sort((a, b) => {
+      if (a.category !== b.category) {
+        return a.category.localeCompare(b.category);
+      }
+      return a.name.localeCompare(b.name);
+    });
 
     res.json({
       success: true,
@@ -24,81 +38,49 @@ router.get('/tools', optionalAuth, async (req, res) => {
   }
 });
 
-// 添加新工具
-router.post('/tools', authenticateToken, async (req, res) => {
+
+// 获取工具分类列表
+router.get('/tools/categories', optionalAuth, async (req, res) => {
   try {
-    const { name, description, url, icon, category } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ error: '工具名称不能为空' });
-    }
-
-    const result = await run(
-      'INSERT INTO tools (name, description, url, icon, category) VALUES (?, ?, ?, ?, ?)',
-      [name, description || '', url || '', icon || '🔧', category || 'other']
-    );
-
-    const newTool = await get('SELECT * FROM tools WHERE id = ?', [result.id]);
-
-    res.status(201).json({
-      success: true,
-      message: '工具添加成功',
-      data: newTool
+    const toolRegistry = getToolRegistry();
+    const categories = toolRegistry.getCategories();
+    
+    // 获取每个分类的工具数量
+    const categoryStats = categories.map(category => {
+      const tools = toolRegistry.getToolsByCategory(category);
+      return {
+        name: category,
+        count: tools.length,
+        activeCount: tools.filter(tool => tool.isActive).length
+      };
     });
-  } catch (error) {
-    console.error('添加工具错误:', error);
-    res.status(500).json({ error: '添加工具失败' });
-  }
-});
-
-// 更新工具
-router.put('/tools/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, description, url, icon, category, is_active } = req.body;
-
-    const result = await run(
-      'UPDATE tools SET name = ?, description = ?, url = ?, icon = ?, category = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [name, description, url, icon, category, is_active, id]
-    );
-
-    if (result.changes === 0) {
-      return res.status(404).json({ error: '工具不存在' });
-    }
-
-    const updatedTool = await get('SELECT * FROM tools WHERE id = ?', [id]);
 
     res.json({
       success: true,
-      message: '工具更新成功',
-      data: updatedTool
+      data: categoryStats
     });
   } catch (error) {
-    console.error('更新工具错误:', error);
-    res.status(500).json({ error: '更新工具失败' });
+    console.error('获取工具分类错误:', error);
+    res.status(500).json({ error: '获取工具分类失败' });
   }
 });
 
-// 删除工具
-router.delete('/tools/:id', authenticateToken, async (req, res) => {
+// 获取工具统计信息
+router.get('/tools/stats', optionalAuth, async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const result = await run('DELETE FROM tools WHERE id = ?', [id]);
-
-    if (result.changes === 0) {
-      return res.status(404).json({ error: '工具不存在' });
-    }
+    const toolRegistry = getToolRegistry();
+    const stats = toolRegistry.getStats();
 
     res.json({
       success: true,
-      message: '工具删除成功'
+      data: stats
     });
   } catch (error) {
-    console.error('删除工具错误:', error);
-    res.status(500).json({ error: '删除工具失败' });
+    console.error('获取工具统计错误:', error);
+    res.status(500).json({ error: '获取工具统计失败' });
   }
 });
+
 
 // 获取系统信息
 router.get('/system', optionalAuth, async (req, res) => {
@@ -176,9 +158,8 @@ router.get('/', (req, res) => {
       },
       tools: {
         'GET /api/tools': '获取工具列表',
-        'POST /api/tools': '添加新工具 (需要认证)',
-        'PUT /api/tools/:id': '更新工具 (需要认证)',
-        'DELETE /api/tools/:id': '删除工具 (需要认证)'
+        'GET /api/tools/categories': '获取工具分类列表',
+        'GET /api/tools/stats': '获取工具统计信息',
       },
       system: {
         'GET /api/system': '获取系统信息',

@@ -84,21 +84,6 @@ function initDatabase() {
           resolve();
         }
       });
-
-      // 插入示例工具数据
-      db.run(`
-        INSERT OR IGNORE INTO tools (name, description, url, icon, category) VALUES 
-        ('文件管理', '浏览和管理NAS文件', '/file-manager', '📁', 'file'),
-        ('下载中心', '管理下载任务', '/downloads', '⬇️', 'download'),
-        ('系统监控', '查看系统状态', '/monitor', '📊', 'system'),
-        ('设置中心', '系统配置管理', '/settings', '⚙️', 'config')
-      `, (err) => {
-        if (err) {
-          console.log('⚠️ 示例工具数据插入失败:', err.message);
-        } else {
-          console.log('✅ 示例工具数据插入成功');
-        }
-      });
     });
   });
 }

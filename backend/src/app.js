@@ -8,6 +8,7 @@ require('dotenv').config({ path: './config.env' });
 const authRoutes = require('./routes/auth');
 const apiRoutes = require('./routes/api');
 const { initDatabase } = require('./models/database');
+const { initializeTools } = require('./config/tools');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -60,6 +61,9 @@ async function startServer() {
     // 初始化数据库
     await initDatabase();
     console.log('✅ 数据库初始化完成');
+    
+    // 初始化工具注册
+    initializeTools();
     
     // 启动服务器
     app.listen(PORT, () => {
