@@ -1,0 +1,29 @@
+{
+  "name": "nas-tools-backend",
+  "version": "1.0.0",
+  "description": "简易NAS工具服务端脚手架",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "pm2": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop nas-tools",
+    "pm2:restart": "pm2 restart nas-tools"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": ["nas", "tools", "api", "express"],
+  "author": "xuekai",
+  "license": "MIT"
+}
