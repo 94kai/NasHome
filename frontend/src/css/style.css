@@ -1,0 +1,125 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f0f2f5;
+    color: #333;
+    height: 100%;
+}
+
+#app-container {
+    display: flex;
+    height: 100vh;
+}
+
+.sidebar {
+    width: 220px;
+    background-color: #ffffff;
+    border-right: 1px solid #e0e0e0;
+    padding: 25px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    transition: transform 0.3s ease-in-out;
+    z-index: 1000;
+}
+
+.sidebar h2 {
+    margin-top: 0;
+    font-size: 1.6em;
+    color: #007bff;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 20px;
+}
+
+.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sidebar li {
+    padding: 12px 15px;
+    cursor: pointer;
+    border-radius: 5px;
+    margin-bottom: 8px;
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.sidebar li:hover {
+    background-color: #f0f0f0;
+}
+
+.sidebar li.active {
+    background-color: #007bff;
+    color: white;
+}
+
+.content {
+    flex-grow: 1;
+    padding: 40px;
+    overflow-y: auto;
+}
+
+.mobile-top-bar {
+    display: none; /* Hidden by default on desktop */
+}
+
+.overlay {
+    display: none; /* Hidden by default */
+}
+
+/* --- Mobile Styles --- */
+@media (max-width: 768px) {
+    #app-container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100%;
+        transform: translateX(-100%);
+    }
+
+    .sidebar.is-open {
+        transform: translateX(0);
+    }
+
+    .content {
+        padding: 20px;
+        padding-top: 70px; /* Space for the top bar */
+    }
+
+    .mobile-top-bar {
+        display: flex;
+        align-items: center;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 50px;
+        background-color: #fff;
+        border-bottom: 1px solid #e0e0e0;
+        padding: 0 15px;
+        z-index: 999;
+    }
+
+    .hamburger-btn {
+        font-size: 24px;
+        background: none;
+        border: none;
+        cursor: pointer;
+    }
+
+    .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 998;
+        display: block; /* Display it on mobile when v-if is true */
+    }
+}

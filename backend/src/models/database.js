@@ -2,7 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = process.env.DB_PATH || './database/nas-tools.db';
+const DB_PATH = process.env.DB_PATH || './database/nas-home.db';
 
 // 确保数据库目录存在
 const dbDir = path.dirname(DB_PATH);

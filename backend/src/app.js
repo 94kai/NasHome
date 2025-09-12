@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const listEndpoints = require('express-list-endpoints');
+const history = require('connect-history-api-fallback');
 require('dotenv').config({
     path: './config.env'
 });
@@ -16,7 +17,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 中间件
-app.use(helmet()); // 安全头
 app.use(cors()); // 跨域支持
 app.use(morgan('combined')); // 日志
 app.use(express.json()); // JSON解析
@@ -24,8 +24,7 @@ app.use(express.urlencoded({
     extended: true
 })); // URL编码解析
 
-// 静态文件服务 - 指向前端构建后的文件
-app.use(express.static(path.join(__dirname, '../../frontend/src')));
+
 
 // 路由
 app.use('/api/auth', require('./routes/auth'));
@@ -59,16 +58,9 @@ app.get('/api', (req, res) => {
     })
 });
 
-// 404处理
-app.use('*', (req, res) => {
-    if (res.headersSent) {
-        return;
-    }
-    console.log('404');
-    res.status(404).json({
-        error: '接口不存在'
-    });
-});
+app.use(history());
+// 静态文件服务 - 指向前端构建后的文件
+app.use(express.static(path.join(__dirname, '../../frontend/dist/')));
 
 // 错误处理
 app.use((err, req, res, next) => {
