@@ -15,5 +15,8 @@ export default defineConfig({
                 changeOrigin: true,
             }
         },
+    allowedHosts: [
+        'home.xuekai.top'
+    ]
     },
 });

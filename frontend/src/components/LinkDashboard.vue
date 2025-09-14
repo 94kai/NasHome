@@ -32,11 +32,6 @@ export default {
           icon: new URL('../assets/images/jellyfin.png', import.meta.url).href
         },
         {
-          name: '测速',
-          url: 'https://speedtest.xuekai.top:8888',
-          icon: new URL('https://speedtest.xuekai.top:8888/favicon.ico', import.meta.url).href
-        },
-        {
           name: 'blog',
           url: 'https://blog.xuekai.top:8888',
           icon: new URL('../assets/images/blog.png', import.meta.url).href
