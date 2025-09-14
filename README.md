@@ -17,57 +17,24 @@ nas-tools/
 └── README.md              # 项目说明
 ```
 
-## 🚀 快速开始
+## 🚀 开发阶段
 
-### 1. 安装依赖
-```bash
-# 安装后端依赖
 cd backend
 npm install
+npm run dev
+
+cd frontend
+npm install
+npm run dev
 
 
-### 2. 启动服务
-```bash
-# 启动后端服务
+## 🚀 上线
+
 cd backend
-./start.sh
-
-# 或者手动启动
-npm start
-```
-
-### 3. 访问应用
-- 主页面: http://localhost:3000
-- API文档: http://localhost:3000/api
-- 健康检查: http://localhost:3000/health
-
-## 🔧 开发说明
-
-### 后端开发
-```bash
-cd backend
-npm run dev  # 开发模式，自动重启
-```
-
-## 📦 部署
-
-### 使用PM2部署
-```bash
-cd backend
+npm install
 pm2 start ecosystem.config.js
-pm2 status
-```
 
-### 查看日志
-```bash
-pm2 logs nas-tools-backend
-```
-
-## 🔑 默认账号
-
-- **用户名**: admin
-- **密码**: admin123
-
-## 📄 许可证
-
-MIT License
+### 更新前端
+cd frontend
+npm install
+npm run build
