@@ -62,6 +62,7 @@ app.get('/api', (req, res) => {
 app.use(history());
 // 静态文件服务 - 指向前端构建后的文件
 app.use(express.static(path.join(__dirname, '../../frontend/dist/')));
+app.use(express.static(path.join(__dirname, '../../static/')));
 
 // 错误处理
 app.use((err, req, res, next) => {

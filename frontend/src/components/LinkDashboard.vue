@@ -76,6 +76,11 @@ export default {
           url: 'https://xunlei.xuekai.top:8888',
           icon: new URL('../assets/images/xunlei.png', import.meta.url).href
         },
+        {
+          name: '飞牛论坛',
+          url: 'https://club.fnnas.com/portal.php',
+          icon: new URL('../assets/images/feiniu.ico', import.meta.url).href
+        },
       ]
     };
   },
