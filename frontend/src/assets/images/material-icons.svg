@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Simple 3x3 grid icon to represent an icon library -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <g fill="#007bff">
+    <rect x="3"  y="3"  width="4" height="4" rx="1"/>
+    <rect x="10" y="3"  width="4" height="4" rx="1"/>
+    <rect x="17" y="3"  width="4" height="4" rx="1"/>
+    <rect x="3"  y="10" width="4" height="4" rx="1"/>
+    <rect x="10" y="10" width="4" height="4" rx="1"/>
+    <rect x="17" y="10" width="4" height="4" rx="1"/>
+    <rect x="3"  y="17" width="4" height="4" rx="1"/>
+    <rect x="10" y="17" width="4" height="4" rx="1"/>
+    <rect x="17" y="17" width="4" height="4" rx="1"/>
+  </g>
+  <title>Material Icons</title>
+</svg>
+
