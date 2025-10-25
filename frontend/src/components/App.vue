@@ -29,6 +29,7 @@ export default {
       isMobileMenuOpen: false,
       navItems: [
         { name: '链接', path: '/links' },
+        { name: '文件浏览', path: '/files' },
         { name: '网络测速', path: '/speedtest' },
         { name: '工具 1', path: '/tool1' },
         { name: '工具 2', path: '/tool2' },

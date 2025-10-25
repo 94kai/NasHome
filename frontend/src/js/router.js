@@ -6,6 +6,7 @@ import Login from '../components/Login.vue';
 import Tool1 from '../components/tools/Tool1.vue';
 import Tool2 from '../components/tools/Tool2.vue';
 import Tool3 from '../components/tools/Tool3.vue';
+import FileBrowser from '../components/tools/FileBrowser.vue';
 import SpeedTest from '../components/tools/SpeedTest.vue';
 import LinkDashboard from '../components/LinkDashboard.vue';
 
@@ -33,6 +34,11 @@ const routes = [{
         path: '/tool3',
         name: 'Tool3',
         component: Tool3,
+    },
+    {
+        path: '/files',
+        name: 'FileBrowser',
+        component: FileBrowser,
     },
     {
         path: '/speedtest',

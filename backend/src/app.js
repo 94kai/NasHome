@@ -31,6 +31,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/media', require('./routes/media'));
 app.use('/api/monitor', require('./routes/monitor'));
 app.use('/api/speedtest', require('./routes/speedtest'));
+app.use('/api/fs', require('./routes/fs'));
 
 // api列表
 app.get('/api', (req, res) => {
