@@ -65,9 +65,19 @@ function isAllowedTextFile(name) {
 const IMAGE_EXT = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tif', '.tiff', '.avif'
 ]);
+
+// Basic video detection by extension
+const VIDEO_EXT = new Set([
+  '.mp4', '.m4v', '.mkv', '.webm', '.ogg', '.ogv', '.mov', '.avi', '.wmv', '.ts', '.m2ts', '.3gp'
+]);
 function isImageFile(name) {
   const ext = path.extname(name).toLowerCase();
   return IMAGE_EXT.has(ext);
+}
+
+function isVideoFile(name) {
+  const ext = path.extname(name).toLowerCase();
+  return VIDEO_EXT.has(ext);
 }
 
 // Minimal content-type mapping to avoid pulling extra deps
@@ -85,6 +95,19 @@ function contentTypeFor(name) {
     case '.tif':
     case '.tiff': return 'image/tiff';
     case '.avif': return 'image/avif';
+    // Video
+    case '.mp4':
+    case '.m4v': return 'video/mp4';
+    case '.webm': return 'video/webm';
+    case '.ogv':
+    case '.ogg': return 'video/ogg';
+    case '.mov': return 'video/quicktime';
+    case '.mkv': return 'video/x-matroska';
+    case '.avi': return 'video/x-msvideo';
+    case '.wmv': return 'video/x-ms-wmv';
+    case '.ts':
+    case '.m2ts': return 'video/mp2t';
+    case '.3gp': return 'video/3gpp';
     default: return 'application/octet-stream';
   }
 }
@@ -158,6 +181,7 @@ router.get('/list', authenticateToken, async (req, res) => {
       const relPath = toRel(abs);
       const isText = type === 'file' ? isAllowedTextFile(name) : false;
       const isImage = type === 'file' ? isImageFile(name) : false;
+      const isVideo = type === 'file' ? isVideoFile(name) : false;
 
       return {
         name,
@@ -165,7 +189,8 @@ router.get('/list', authenticateToken, async (req, res) => {
         type,
         size: stat.size || 0,
         isText,
-        isImage
+        isImage,
+        isVideo
       };
     }));
 
@@ -254,7 +279,7 @@ router.get('/stat', authenticateToken, async (req, res) => {
     const isDir = st.isDirectory();
     const type = isDir ? 'dir' : (st.isFile() ? 'file' : 'other');
     const name = path.basename(abs);
-    const payload = {
+  const payload = {
       name,
       path: toRel(abs),
       type,
@@ -262,7 +287,8 @@ router.get('/stat', authenticateToken, async (req, res) => {
       mtime: st.mtimeMs ? new Date(st.mtimeMs).toISOString() : null,
       ctime: st.ctimeMs ? new Date(st.ctimeMs).toISOString() : null,
       isText: !isDir && st.isFile() ? isAllowedTextFile(name) : false,
-      isImage: !isDir && st.isFile() ? isImageFile(name) : false
+      isImage: !isDir && st.isFile() ? isImageFile(name) : false,
+      isVideo: !isDir && st.isFile() ? isVideoFile(name) : false
     };
     res.json(payload);
   } catch (err) {
@@ -387,6 +413,67 @@ router.get('/preview', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/fs/stream?path=relative/file
+// Streams video content with HTTP Range support; requires auth
+router.get('/stream', authenticateToken, async (req, res) => {
+  try {
+    const rel = (req.query.path || '').toString();
+    const abs = resolveSafe(rel);
+
+    let stat;
+    try { stat = await fsp.stat(abs); } catch { return res.status(404).json({ error: '文件不存在' }); }
+    if (!stat.isFile()) return res.status(400).json({ error: '不是文件' });
+
+    const name = path.basename(abs);
+    const size = stat.size || 0;
+    const ct = contentTypeFor(name);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'no-store');
+
+    const range = req.headers.range;
+    if (range) {
+      // Parse simple bytes range: bytes=start-end
+      const m = /^bytes=(\d+)-(\d+)?$/.exec(range);
+      if (!m) {
+        res.setHeader('Content-Range', `bytes */${size}`);
+        return res.status(416).end();
+      }
+      let start = parseInt(m[1], 10);
+      let end = m[2] ? parseInt(m[2], 10) : (size - 1);
+      if (isNaN(start) || isNaN(end) || start > end || start >= size) {
+        res.setHeader('Content-Range', `bytes */${size}`);
+        return res.status(416).end();
+      }
+      end = Math.min(end, size - 1);
+      const chunkSize = (end - start) + 1;
+      res.status(206);
+      res.setHeader('Content-Type', ct);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+      res.setHeader('Content-Length', chunkSize);
+      const stream = fs.createReadStream(abs, { start, end });
+      stream.on('error', (err) => {
+        console.error('FS stream range error:', err);
+        try { res.end(); } catch (_) {}
+      });
+      return stream.pipe(res);
+    }
+
+    // No range -> stream whole file
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Content-Length', size);
+    const stream = fs.createReadStream(abs);
+    stream.on('error', (err) => {
+      console.error('FS stream error:', err);
+      if (!res.headersSent) res.status(500).json({ error: '流式播放失败' });
+    });
+    return stream.pipe(res);
+  } catch (err) {
+    if (err && err.code === 'OUT_OF_ROOT') return res.status(400).json({ error: '路径越界' });
+    console.error('FS stream error:', err);
+    res.status(500).json({ error: '流式播放失败' });
+  }
+});
+
 // POST /api/fs/sign  { path: 'relative/file', ttl?: seconds }
 // Returns a short-lived signed URL that can be used without Authorization header
 router.post('/sign', authenticateToken, async (req, res) => {
@@ -394,20 +481,21 @@ router.post('/sign', authenticateToken, async (req, res) => {
     const body = req.body || {};
     const rel = (body.path || '').toString();
     const ttl = Math.min(Math.max(parseInt(body.ttl || '120', 10) || 120, 10), 3600); // 10s - 1h
-    const mode = ((body.mode || 'download') + '').toLowerCase(); // 'download' | 'preview'
+    const mode = ((body.mode || 'download') + '').toLowerCase(); // 'download' | 'preview' | 'stream'
     const abs = resolveSafe(rel);
 
     let stat;
     try { stat = await fsp.stat(abs); } catch { return res.status(404).json({ error: '文件不存在' }); }
     if (!stat.isFile()) return res.status(400).json({ error: '不是文件' });
 
+    // Token subject reflects mode for stricter validation
     const payload = {
-      sub: 'fsdl',
+      sub: mode === 'stream' ? 'fsstream' : 'fsdl',
       path: toRel(abs),
       uid: req.user && req.user.id
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: ttl });
-    const endpoint = mode === 'preview' ? '/api/fs/preview-signed' : '/api/fs/download-signed';
+    const endpoint = mode === 'preview' ? '/api/fs/preview-signed' : (mode === 'stream' ? '/api/fs/stream-signed' : '/api/fs/download-signed');
     const url = `${endpoint}?token=${encodeURIComponent(token)}`;
     const expiresAt = Date.now() + ttl * 1000;
     res.json({ url, expiresAt });
@@ -500,6 +588,76 @@ router.get('/preview-signed', async (req, res) => {
     if (err && err.code === 'OUT_OF_ROOT') return res.status(400).json({ error: '路径越界' });
     console.error('FS preview-signed error:', err);
     res.status(500).json({ error: '预览失败' });
+  }
+});
+
+// GET /api/fs/stream-signed?token=...
+// Streams video content inline without requiring Authorization header
+router.get('/stream-signed', async (req, res) => {
+  try {
+    const token = (req.query.token || '').toString();
+    if (!token) return res.status(400).json({ error: '缺少token' });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ error: '无效或过期的token' });
+    }
+
+    if (decoded.sub !== 'fsstream' || !decoded.path) return res.status(400).json({ error: '非法token' });
+
+    const abs = resolveSafe(decoded.path);
+    let stat;
+    try { stat = await fsp.stat(abs); } catch { return res.status(404).json({ error: '文件不存在' }); }
+    if (!stat.isFile()) return res.status(400).json({ error: '不是文件' });
+
+    const name = path.basename(abs);
+    const size = stat.size || 0;
+    const ct = contentTypeFor(name);
+
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'no-store');
+
+    const range = req.headers.range;
+    if (range) {
+      const m = /^bytes=(\d+)-(\d+)?$/.exec(range);
+      if (!m) {
+        res.setHeader('Content-Range', `bytes */${size}`);
+        return res.status(416).end();
+      }
+      let start = parseInt(m[1], 10);
+      let end = m[2] ? parseInt(m[2], 10) : (size - 1);
+      if (isNaN(start) || isNaN(end) || start > end || start >= size) {
+        res.setHeader('Content-Range', `bytes */${size}`);
+        return res.status(416).end();
+      }
+      end = Math.min(end, size - 1);
+      const chunkSize = (end - start) + 1;
+      res.status(206);
+      res.setHeader('Content-Type', ct);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+      res.setHeader('Content-Length', chunkSize);
+      const stream = fs.createReadStream(abs, { start, end });
+      stream.on('error', (err) => {
+        console.error('FS stream-signed range error:', err);
+        try { res.end(); } catch (_) {}
+      });
+      return stream.pipe(res);
+    }
+
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Content-Length', size);
+    const stream = fs.createReadStream(abs);
+    stream.on('error', (err) => {
+      console.error('FS stream-signed error:', err);
+      if (!res.headersSent) res.status(500).json({ error: '流式播放失败' });
+    });
+    return stream.pipe(res);
+  } catch (err) {
+    if (err && err.code === 'OUT_OF_ROOT') return res.status(400).json({ error: '路径越界' });
+    console.error('FS stream-signed error:', err);
+    res.status(500).json({ error: '流式播放失败' });
   }
 });
 

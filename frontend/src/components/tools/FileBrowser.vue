@@ -25,7 +25,7 @@
                class="row"
                :class="{ dir: it.type==='dir', file: it.type==='file', clickable: it.type==='dir' || it.type==='file' }"
                @click="handleOpen(it)">
-            <span class="icon">{{ it.type === 'dir' ? '📁' : (it.isImage ? '🖼️' : (it.isText ? '📄' : '📦')) }}</span>
+            <span class="icon">{{ it.type === 'dir' ? '📁' : (it.isImage ? '🖼️' : (it.isVideo ? '🎬' : (it.isText ? '📄' : '📦'))) }}</span>
             <span class="name">{{ it.name }}</span>
             <span class="actions" v-if="it.type==='file'">
               <button class="link-btn" title="更多" @click.stop="toggleMenu(it, $event)">更多 ▾</button>
@@ -35,17 +35,20 @@
         <div v-else class="empty">加载中...</div>
       </div>
       <div class="pane right">
-        <div v-if="fileContent || imageUrl" class="viewer">
+        <div v-if="fileContent || imageUrl || videoUrl" class="viewer">
           <div class="viewer-header">
             <span class="viewer-title">{{ fileTitle }}</span>
             <button @click="closePreview">关闭</button>
           </div>
           <pre v-if="fileContent" class="content">{{ fileContent }}</pre>
-          <div v-else class="image-wrap">
+          <div v-else-if="imageUrl" class="image-wrap">
             <img :src="imageUrl" alt="图片预览" class="image-preview" @error="onImageError">
           </div>
+          <div v-else class="video-wrap">
+            <video v-if="videoUrl" class="video-player" :src="videoUrl" controls preload="metadata"></video>
+          </div>
         </div>
-        <div v-else class="placeholder">选择一个文本或图片文件进行预览</div>
+        <div v-else class="placeholder">选择一个文本、图片或视频文件进行预览</div>
       </div>
     </div>
     <!-- Info modal inside root -->
@@ -92,6 +95,7 @@ export default {
       fileContent: '',
       imageUrl: '',
       fileTitle: '',
+      videoUrl: '',
       showHidden: false,
       menuOpenFor: null,
       menuItem: null,
@@ -162,6 +166,7 @@ export default {
         this.fileContent = '';
         this.imageUrl = '';
         this.fileTitle = '';
+        this.videoUrl = '';
         this.menuOpenFor = null;
         this.menuItem = null;
       } catch (e) {
@@ -177,12 +182,12 @@ export default {
       try { localStorage.setItem('showHiddenFiles', JSON.stringify(this.showHidden)); } catch (_) {}
     },
     async getSignedUrl(it, opts = {}) {
-      // Use a short-lived signed URL to allow native download without Authorization header
+      // Use a short-lived signed URL to allow native download or inline preview without Authorization header
       try {
         const resp = await fetch(`/api/fs/sign`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...this.tokenHeader() },
-          body: JSON.stringify({ path: it.path, ttl: 300, mode: opts.preview ? 'preview' : 'download' }) // 5 min
+          body: JSON.stringify({ path: it.path, ttl: 300, mode: opts.preview ? 'preview' : (opts.stream ? 'stream' : 'download') }) // 5 min
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({}));
@@ -318,8 +323,22 @@ export default {
             this.imageUrl = url;
             this.fileContent = '';
             this.fileTitle = it.name;
+            this.videoUrl = '';
           } catch (e) {
             alert(e.message || '预览失败');
+          }
+          return;
+        }
+        // Videos: use a signed stream URL so <video> can request Ranges without Authorization header
+        if (it.isVideo) {
+          try {
+            const { url } = await this.getSignedUrl(it, { stream: true });
+            this.videoUrl = url;
+            this.imageUrl = '';
+            this.fileContent = '';
+            this.fileTitle = it.name;
+          } catch (e) {
+            alert(e.message || '播放失败');
           }
           return;
         }
@@ -343,13 +362,14 @@ export default {
           const data = await resp.json();
           this.fileContent = data.content || '';
           this.imageUrl = '';
+          this.videoUrl = '';
           this.fileTitle = data.name || it.name;
         } catch (e) {
           alert(e.message || '读取失败');
         }
       }
     },
-    closePreview() { this.fileContent = ''; this.imageUrl = ''; this.fileTitle = ''; },
+    closePreview() { this.fileContent = ''; this.imageUrl = ''; this.videoUrl = ''; this.fileTitle = ''; },
     onImageError() {
       alert('图片加载失败');
     },
@@ -405,6 +425,9 @@ export default {
 
 .image-wrap { margin: 8px 0 0; flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
 .image-preview { max-width: 100%; max-height: 58vh; object-fit: contain; }
+
+.video-wrap { margin: 8px 0 0; flex: 1; display: flex; align-items: center; justify-content: center; background: #000; border: 1px solid #eee; border-radius: 4px; }
+.video-player { width: 100%; max-height: 58vh; }
 
 /* minimal modal */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 1000; }
