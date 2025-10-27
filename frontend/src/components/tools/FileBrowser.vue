@@ -3,8 +3,9 @@
     <h3>文件浏览（Home）</h3>
 
     <div class="breadcrumbs">
-      <span class="crumb" :class="{ active: currentPath === '' }" @click="goTo('')">~</span>
-      <span class="sep" v-if="breadcrumbSegments.length">/</span>
+      <span class="crumb" :class="{ active: currentPath === '' }" @click="goTo('')">/</span>
+      <!-- Don't render an extra separator after root '/' to avoid '//' -->
+      <!-- The per-segment loop will insert separators before idx>0 items -->
       <template v-for="(seg, idx) in breadcrumbSegments" :key="idx">
         <span class="sep" v-if="idx > 0">/</span>
         <span class="crumb" :class="{ active: idx === breadcrumbSegments.length - 1 }" @click="goTo(seg.path)">{{ seg.name }}</span>
@@ -16,6 +17,7 @@
         <div class="toolbar">
           <button :disabled="parent === null" @click="goTo(parent)">上一级</button>
           <button @click="refresh">刷新</button>
+          <button @click="goToHome">进入Home</button>
           <button @click="toggleHidden">{{ showHidden ? '隐藏隐藏文件' : '显示隐藏文件' }}</button>
         </div>
         <div class="list" v-if="items">
@@ -163,6 +165,8 @@ export default {
     },
     refresh() { this.loadList(this.currentPath); },
     goTo(relPath) { this.loadList(relPath || ''); },
+    // Jump to user Home directory under root FS
+    goToHome() { this.goTo('/home/xuekai'); },
     toggleHidden() {
       this.showHidden = !this.showHidden;
       try { localStorage.setItem('showHiddenFiles', JSON.stringify(this.showHidden)); } catch (_) {}

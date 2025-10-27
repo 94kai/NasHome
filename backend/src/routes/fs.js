@@ -11,6 +11,9 @@ const router = express.Router();
 
 // Base root for browsing; defaults to the system home directory
 const HOME_ROOT = path.resolve(process.env.FS_ROOT || os.homedir());
+// Prefix used to validate child paths stay under HOME_ROOT.
+// Use a safe prefix that works when HOME_ROOT is '/' (avoid creating '//').
+const HOME_ROOT_PREFIX = HOME_ROOT.endsWith(path.sep) ? HOME_ROOT : HOME_ROOT + path.sep;
 
 // Whitelist of text extensions allowed for inline preview
 const ALLOWED_TEXT_EXT = new Set([
@@ -35,7 +38,9 @@ function resolveSafe(rel) {
   const relNorm = (rel || '').replace(/^\/+/, ''); // strip leading slashes
   const abs = path.resolve(HOME_ROOT, relNorm);
   if (abs === HOME_ROOT) return abs;
-  if (!abs.startsWith(HOME_ROOT + path.sep) && abs !== HOME_ROOT) {
+  // Ensure `abs` does not escape HOME_ROOT. When HOME_ROOT is '/',
+  // use HOME_ROOT_PREFIX to avoid the '//' mismatch.
+  if (!abs.startsWith(HOME_ROOT_PREFIX) && abs !== HOME_ROOT) {
     const err = new Error('Path escapes root');
     err.code = 'OUT_OF_ROOT';
     throw err;
@@ -117,7 +122,7 @@ router.get('/list', authenticateToken, async (req, res) => {
 
       const realAbs = path.resolve(abs);
       // Hide items that resolve outside of HOME_ROOT
-      if (!realAbs.startsWith(HOME_ROOT + path.sep) && realAbs !== HOME_ROOT) {
+      if (!realAbs.startsWith(HOME_ROOT_PREFIX) && realAbs !== HOME_ROOT) {
         return null;
       }
 
