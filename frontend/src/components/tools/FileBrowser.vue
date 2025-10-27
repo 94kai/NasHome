@@ -25,7 +25,7 @@
                class="row"
                :class="{ dir: it.type==='dir', file: it.type==='file', clickable: it.type==='dir' || it.type==='file' }"
                @click="handleOpen(it)">
-            <span class="icon">{{ it.type === 'dir' ? '📁' : (it.isText ? '📄' : '📦') }}</span>
+            <span class="icon">{{ it.type === 'dir' ? '📁' : (it.isImage ? '🖼️' : (it.isText ? '📄' : '📦')) }}</span>
             <span class="name">{{ it.name }}</span>
             <span class="actions" v-if="it.type==='file'">
               <button class="link-btn" title="更多" @click.stop="toggleMenu(it, $event)">更多 ▾</button>
@@ -35,14 +35,17 @@
         <div v-else class="empty">加载中...</div>
       </div>
       <div class="pane right">
-        <div v-if="fileContent" class="viewer">
+        <div v-if="fileContent || imageUrl" class="viewer">
           <div class="viewer-header">
             <span class="viewer-title">{{ fileTitle }}</span>
             <button @click="closePreview">关闭</button>
           </div>
-          <pre class="content">{{ fileContent }}</pre>
+          <pre v-if="fileContent" class="content">{{ fileContent }}</pre>
+          <div v-else class="image-wrap">
+            <img :src="imageUrl" alt="图片预览" class="image-preview" @error="onImageError">
+          </div>
         </div>
-        <div v-else class="placeholder">选择一个文本文件进行预览</div>
+        <div v-else class="placeholder">选择一个文本或图片文件进行预览</div>
       </div>
     </div>
     <!-- Info modal inside root -->
@@ -87,6 +90,7 @@ export default {
       parent: null,
       items: null,
       fileContent: '',
+      imageUrl: '',
       fileTitle: '',
       showHidden: false,
       menuOpenFor: null,
@@ -156,6 +160,7 @@ export default {
         this.items = data.items || [];
         // If navigating, clear preview
         this.fileContent = '';
+        this.imageUrl = '';
         this.fileTitle = '';
         this.menuOpenFor = null;
         this.menuItem = null;
@@ -177,7 +182,7 @@ export default {
         const resp = await fetch(`/api/fs/sign`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...this.tokenHeader() },
-          body: JSON.stringify({ path: it.path, ttl: 300 }) // 5 min
+          body: JSON.stringify({ path: it.path, ttl: 300, mode: opts.preview ? 'preview' : 'download' }) // 5 min
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({}));
@@ -306,12 +311,24 @@ export default {
         return;
       }
       if (it.type === 'file') {
+        // Images: use a signed preview URL to allow <img> to load without headers
+        if (it.isImage) {
+          try {
+            const { url } = await this.getSignedUrl(it, { preview: true });
+            this.imageUrl = url;
+            this.fileContent = '';
+            this.fileTitle = it.name;
+          } catch (e) {
+            alert(e.message || '预览失败');
+          }
+          return;
+        }
+        // Text files: fetch content
         try {
           const resp = await fetch(`/api/fs/read?path=${encodeURIComponent(it.path)}`, {
             headers: { ...this.tokenHeader() }
           });
           if (!resp.ok) {
-            // try to interpret common cases
             if (resp.status === 415) {
               alert('该文件不是纯文本或编码不受支持，无法预览');
               return;
@@ -325,13 +342,17 @@ export default {
           }
           const data = await resp.json();
           this.fileContent = data.content || '';
+          this.imageUrl = '';
           this.fileTitle = data.name || it.name;
         } catch (e) {
           alert(e.message || '读取失败');
         }
       }
     },
-    closePreview() { this.fileContent = ''; this.fileTitle = ''; },
+    closePreview() { this.fileContent = ''; this.imageUrl = ''; this.fileTitle = ''; },
+    onImageError() {
+      alert('图片加载失败');
+    },
     formatSize(s) {
       if (s == null || isNaN(s)) return '-';
       const units = ['B','KB','MB','GB','TB'];
@@ -381,6 +402,9 @@ export default {
 .viewer-title { font-weight: 600; }
 .content { margin: 8px 0 0; flex: 1; overflow: auto; background: #fafafa; border: 1px solid #eee; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
 .placeholder { color: #666; padding: 12px; }
+
+.image-wrap { margin: 8px 0 0; flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
+.image-preview { max-width: 100%; max-height: 58vh; object-fit: contain; }
 
 /* minimal modal */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 1000; }

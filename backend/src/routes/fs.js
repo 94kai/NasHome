@@ -61,6 +61,34 @@ function isAllowedTextFile(name) {
   return ALLOWED_TEXT_NAMES.has(base);
 }
 
+// Basic image detection by extension
+const IMAGE_EXT = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tif', '.tiff', '.avif'
+]);
+function isImageFile(name) {
+  const ext = path.extname(name).toLowerCase();
+  return IMAGE_EXT.has(ext);
+}
+
+// Minimal content-type mapping to avoid pulling extra deps
+function contentTypeFor(name) {
+  const ext = path.extname(name).toLowerCase();
+  switch (ext) {
+    case '.png': return 'image/png';
+    case '.jpg':
+    case '.jpeg': return 'image/jpeg';
+    case '.gif': return 'image/gif';
+    case '.bmp': return 'image/bmp';
+    case '.webp': return 'image/webp';
+    case '.svg': return 'image/svg+xml';
+    case '.ico': return 'image/x-icon';
+    case '.tif':
+    case '.tiff': return 'image/tiff';
+    case '.avif': return 'image/avif';
+    default: return 'application/octet-stream';
+  }
+}
+
 // Heuristic: check a small sample to see if file looks like text (no NUL, low control ratio)
 async function looksLikeTextFile(abs, size) {
   try {
@@ -129,13 +157,15 @@ router.get('/list', authenticateToken, async (req, res) => {
       const type = stat.isDirectory() ? 'dir' : (stat.isFile() ? 'file' : 'other');
       const relPath = toRel(abs);
       const isText = type === 'file' ? isAllowedTextFile(name) : false;
+      const isImage = type === 'file' ? isImageFile(name) : false;
 
       return {
         name,
         path: relPath,
         type,
         size: stat.size || 0,
-        isText
+        isText,
+        isImage
       };
     }));
 
@@ -231,7 +261,8 @@ router.get('/stat', authenticateToken, async (req, res) => {
       size: st.size,
       mtime: st.mtimeMs ? new Date(st.mtimeMs).toISOString() : null,
       ctime: st.ctimeMs ? new Date(st.ctimeMs).toISOString() : null,
-      isText: !isDir && st.isFile() ? isAllowedTextFile(name) : false
+      isText: !isDir && st.isFile() ? isAllowedTextFile(name) : false,
+      isImage: !isDir && st.isFile() ? isImageFile(name) : false
     };
     res.json(payload);
   } catch (err) {
@@ -326,6 +357,36 @@ router.get('/download', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/fs/preview?path=relative/file
+// Streams image content inline with appropriate Content-Type; requires auth
+router.get('/preview', authenticateToken, async (req, res) => {
+  try {
+    const rel = (req.query.path || '').toString();
+    const abs = resolveSafe(rel);
+
+    let stat;
+    try { stat = await fsp.stat(abs); } catch (e) { return res.status(404).json({ error: '文件不存在' }); }
+    if (!stat.isFile()) return res.status(400).json({ error: '不是文件' });
+
+    const name = path.basename(abs);
+    if (!isImageFile(name)) return res.status(415).json({ error: '仅支持预览图片' });
+
+    const ct = contentTypeFor(name);
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'no-store');
+    const stream = fs.createReadStream(abs);
+    stream.on('error', (err) => {
+      console.error('FS preview stream error:', err);
+      if (!res.headersSent) res.status(500).json({ error: '预览失败' });
+    });
+    stream.pipe(res);
+  } catch (err) {
+    if (err && err.code === 'OUT_OF_ROOT') return res.status(400).json({ error: '路径越界' });
+    console.error('FS preview error:', err);
+    res.status(500).json({ error: '预览失败' });
+  }
+});
+
 // POST /api/fs/sign  { path: 'relative/file', ttl?: seconds }
 // Returns a short-lived signed URL that can be used without Authorization header
 router.post('/sign', authenticateToken, async (req, res) => {
@@ -333,6 +394,7 @@ router.post('/sign', authenticateToken, async (req, res) => {
     const body = req.body || {};
     const rel = (body.path || '').toString();
     const ttl = Math.min(Math.max(parseInt(body.ttl || '120', 10) || 120, 10), 3600); // 10s - 1h
+    const mode = ((body.mode || 'download') + '').toLowerCase(); // 'download' | 'preview'
     const abs = resolveSafe(rel);
 
     let stat;
@@ -345,7 +407,8 @@ router.post('/sign', authenticateToken, async (req, res) => {
       uid: req.user && req.user.id
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: ttl });
-    const url = `/api/fs/download-signed?token=${encodeURIComponent(token)}`;
+    const endpoint = mode === 'preview' ? '/api/fs/preview-signed' : '/api/fs/download-signed';
+    const url = `${endpoint}?token=${encodeURIComponent(token)}`;
     const expiresAt = Date.now() + ttl * 1000;
     res.json({ url, expiresAt });
   } catch (err) {
@@ -398,6 +461,45 @@ router.get('/download-signed', async (req, res) => {
     if (err && err.code === 'OUT_OF_ROOT') return res.status(400).json({ error: '路径越界' });
     console.error('FS download-signed error:', err);
     res.status(500).json({ error: '下载失败' });
+  }
+});
+
+// GET /api/fs/preview-signed?token=...
+// Streams image content inline without requiring Authorization header
+router.get('/preview-signed', async (req, res) => {
+  try {
+    const token = (req.query.token || '').toString();
+    if (!token) return res.status(400).json({ error: '缺少token' });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ error: '无效或过期的token' });
+    }
+
+    if (decoded.sub !== 'fsdl' || !decoded.path) return res.status(400).json({ error: '非法token' });
+
+    const abs = resolveSafe(decoded.path);
+    let stat;
+    try { stat = await fsp.stat(abs); } catch { return res.status(404).json({ error: '文件不存在' }); }
+    if (!stat.isFile()) return res.status(400).json({ error: '不是文件' });
+
+    const name = path.basename(abs);
+    if (!isImageFile(name)) return res.status(415).json({ error: '仅支持预览图片' });
+
+    const ct = contentTypeFor(name);
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'no-store');
+    const stream = fs.createReadStream(abs);
+    stream.on('error', () => {
+      if (!res.headersSent) res.status(500).json({ error: '预览失败' });
+    });
+    stream.pipe(res);
+  } catch (err) {
+    if (err && err.code === 'OUT_OF_ROOT') return res.status(400).json({ error: '路径越界' });
+    console.error('FS preview-signed error:', err);
+    res.status(500).json({ error: '预览失败' });
   }
 });
 
