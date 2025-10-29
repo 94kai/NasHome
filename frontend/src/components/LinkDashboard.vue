@@ -48,6 +48,7 @@ export default {
         {
           name: '工具',
           links: [
+            { name: 'Home Assistant', url: 'https://ha.xuekai.top:8888', icon: new URL('../assets/images/home-assistant.png', import.meta.url).href },
             { name: 'clash', url: 'https://clash.xuekai.top:8888/ui', icon: new URL('../assets/images/clash.png', import.meta.url).href },
             { name: 'Melody', url: 'https://melody.xuekai.top:8888', icon: new URL('../assets/images/melody.png', import.meta.url).href },
             { name: 'pdf', url: 'https://pdf.xuekai.top:8888', icon: new URL('../assets/images/stirling-pdf.png', import.meta.url).href },
