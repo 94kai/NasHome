@@ -19,16 +19,38 @@
           <button @click="refresh">刷新</button>
           <button @click="goToHome">进入Home</button>
           <button @click="toggleHidden">{{ showHidden ? '隐藏隐藏文件' : '显示隐藏文件' }}</button>
+          <button @click="toggleFavoritesMode">{{ favoritesMode ? '返回浏览' : '我的收藏' }}</button>
         </div>
-        <div class="list" v-if="items">
+        <!-- 我的收藏视图 -->
+        <div class="list" v-if="favoritesMode">
+          <div v-if="favorites.length === 0" class="empty">暂无收藏，点击列表右侧星标可收藏</div>
+          <div v-for="fav in favorites" :key="fav.id"
+               class="row clickable"
+               @click="openFavorite(fav)">
+            <span class="icon">{{ fav.type === 'dir' ? '📁' : (fav.type === 'file' ? '📄' : '📦') }}</span>
+            <span class="name">
+              <span class="alias" v-if="fav.alias">{{ fav.alias }}</span>
+              <span class="alias" v-else>{{ fav.name }}</span>
+              <span class="path">（{{ fav.path || '/' }}）</span>
+              <span v-if="!fav.exists" class="warn">[已失效]</span>
+            </span>
+            <span class="actions">
+              <button class="link-btn" title="取消收藏" @click.stop="removeFavorite(fav)">取消收藏</button>
+            </span>
+          </div>
+        </div>
+        <!-- 目录浏览视图 -->
+        <div class="list" v-else-if="items">
           <div v-for="it in displayedItems" :key="it.path"
                class="row"
                :class="{ dir: it.type==='dir', file: it.type==='file', clickable: it.type==='dir' || it.type==='file' }"
                @click="handleOpen(it)">
             <span class="icon">{{ it.type === 'dir' ? '📁' : (it.isImage ? '🖼️' : (it.isVideo ? '🎬' : (it.isText ? '📄' : '📦'))) }}</span>
             <span class="name">{{ it.name }}</span>
-            <span class="actions" v-if="it.type==='file'">
-              <button class="link-btn" title="更多" @click.stop="toggleMenu(it, $event)">更多 ▾</button>
+            <span class="actions">
+              <!-- 后端收藏：已收藏显示★，未收藏显示☆ -->
+              <button class="link-btn star-btn" :title="isFavorited(it.path) ? '取消收藏' : '收藏'" @click.stop="toggleFavorite(it)">{{ isFavorited(it.path) ? '★' : '☆' }}</button>
+              <button v-if="it.type==='file'" class="link-btn" title="更多" @click.stop="toggleMenu(it, $event)">更多 ▾</button>
             </span>
           </div>
         </div>
@@ -102,7 +124,11 @@ export default {
       menuPos: { top: 0, left: 0 },
       infoOpen: false,
       infoLoading: false,
-      infoData: null
+      infoData: null,
+      favoritesMode: false,
+      // 服务端收藏数据
+      favorites: [],
+      favByPath: {}
     };
   },
   computed: {
@@ -129,6 +155,7 @@ export default {
       if (v !== null) this.showHidden = JSON.parse(v);
     } catch (_) { /* ignore */ }
     this.loadList('');
+    this.loadFavorites();
     // Close menus on global click/escape
     this._onWinClick = () => { this.menuOpenFor = null; this.menuItem = null; };
     this._onKey = (e) => { if (e.key === 'Escape') { this.menuOpenFor = null; this.menuItem = null; } };
@@ -140,6 +167,12 @@ export default {
     if (this._onKey) window.removeEventListener('keydown', this._onKey);
   },
   methods: {
+    toggleFavoritesMode() {
+      const next = !this.favoritesMode;
+      this.favoritesMode = next;
+      // 进入收藏视图时刷新一次，拿最新存在性状态
+      if (next) this.loadFavorites();
+    },
     tokenHeader() {
       const token = localStorage.getItem('token');
       return token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -180,6 +213,77 @@ export default {
     toggleHidden() {
       this.showHidden = !this.showHidden;
       try { localStorage.setItem('showHiddenFiles', JSON.stringify(this.showHidden)); } catch (_) {}
+    },
+    async loadFavorites() {
+      try {
+        const resp = await fetch(`/api/favorites?_=${Date.now()}`, { headers: { ...this.tokenHeader() }, cache: 'no-store' });
+        if (!resp.ok) return; // 静默失败
+        const data = await resp.json();
+        const arr = Array.isArray(data.items) ? data.items : [];
+        this.favorites = arr;
+        const map = {};
+        for (const f of arr) map[f.path] = f;
+        this.favByPath = map;
+      } catch (_) { /* ignore */ }
+    },
+    isFavorited(path) { return !!this.favByPath[path]; },
+    async toggleFavorite(it) {
+      const fav = this.favByPath[it.path];
+      if (fav) {
+        // 取消收藏
+        try {
+          const resp = await fetch(`/api/favorites/${fav.id}`, { method: 'DELETE', headers: { ...this.tokenHeader() } });
+          if (!resp.ok) throw new Error('取消收藏失败');
+          this.favorites = this.favorites.filter(x => x.id !== fav.id);
+          const m = { ...this.favByPath }; delete m[it.path]; this.favByPath = m;
+        } catch (e) {
+          alert(e.message || '取消收藏失败');
+        }
+      } else {
+        // 添加收藏
+        try {
+          const resp = await fetch('/api/favorites', { method: 'POST', headers: { 'Content-Type': 'application/json', ...this.tokenHeader() }, body: JSON.stringify({ path: it.path }) });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error((data && data.error) || '收藏失败');
+          const rec = data && data.id ? data : { id: Date.now(), path: it.path, alias: '', name: it.name, type: it.type, exists: true };
+          this.favorites = [rec, ...this.favorites];
+          this.favByPath = { ...this.favByPath, [rec.path]: rec };
+        } catch (e) {
+          alert(e.message || '收藏失败');
+        }
+      }
+    },
+    openFavorite(fav) {
+      if (fav.type === 'dir') {
+        this.favoritesMode = false;
+        this.goTo(fav.path);
+        return;
+      }
+      if (fav.type === 'file') {
+        // 构造最小 it 复用 handleOpen
+        const it = { name: fav.alias || fav.name, path: fav.path, type: 'file', isText: false, isImage: false, isVideo: false };
+        const lower = (fav.name || '').toLowerCase();
+        if (/(\.png|\.jpg|\.jpeg|\.gif|\.bmp|\.webp|\.svg|\.ico|\.tif|\.tiff|\.avif)$/.test(lower)) it.isImage = true;
+        if (/(\.mp4|\.m4v|\.mkv|\.webm|\.ogg|\.ogv|\.mov|\.avi|\.wmv|\.ts|\.m2ts|\.3gp)$/.test(lower)) it.isVideo = true;
+        if (/(\.txt|\.md|\.markdown|\.log|\.json|\.js|\.mjs|\.cjs|\.ts|\.py|\.sh|\.yaml|\.yml|\.xml|\.html|\.htm|\.css|\.ini|\.conf|\.cfg|\.env)$/i.test(lower)) it.isText = true;
+        this.favoritesMode = false;
+        this.handleOpen(it);
+        return;
+      }
+      // 其他类型：尝试打开父目录
+      const parent = fav.path.split('/').slice(0, -1).join('/');
+      this.favoritesMode = false;
+      this.goTo(parent);
+    },
+    async removeFavorite(fav) {
+      try {
+        const resp = await fetch(`/api/favorites/${fav.id}`, { method: 'DELETE', headers: { ...this.tokenHeader() } });
+        if (!resp.ok) throw new Error('取消收藏失败');
+        this.favorites = this.favorites.filter(x => x.id !== fav.id);
+        const m = { ...this.favByPath }; delete m[fav.path]; this.favByPath = m;
+      } catch (e) {
+        alert(e.message || '取消收藏失败');
+      }
     },
     async getSignedUrl(it, opts = {}) {
       // Use a short-lived signed URL to allow native download or inline preview without Authorization header

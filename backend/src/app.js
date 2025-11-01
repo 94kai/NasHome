@@ -32,6 +32,7 @@ app.use('/api/media', require('./routes/media'));
 app.use('/api/monitor', require('./routes/monitor'));
 app.use('/api/speedtest', require('./routes/speedtest'));
 app.use('/api/fs', require('./routes/fs'));
+app.use('/api/favorites', require('./routes/favorites'));
 
 // api列表
 app.get('/api', (req, res) => {

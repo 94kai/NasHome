@@ -44,6 +44,20 @@ function initDatabase() {
         )
       `);
 
+            // 收藏表：保存用户收藏的文件/目录及可选别名
+            db.run(`
+        CREATE TABLE IF NOT EXISTS favorites (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          path TEXT NOT NULL,
+          alias TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, path),
+          FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+      `);
+
             // 插入默认管理员用户
             db.get("SELECT COUNT(*) as count FROM users WHERE username = 'admin'", (err, row) => {
                 if (err) {
